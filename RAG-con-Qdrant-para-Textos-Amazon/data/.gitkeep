@@ -1,0 +1,3 @@
+# Carpeta de datos. El contenido lo generan:
+#   python 01_setup.py       -> descarga y descomprime el dataset de Amazon
+#   python 03_embeddings.py  -> genera amazon_product_embeddings.parquet

@@ -1,0 +1,12 @@
+# LangChain v1.0 - RAG con Pinecone
+langchain>=1.0,<2.0
+langchain-openai>=1.0,<2.0
+langchain-community>=0.4,<1.0
+langchain-text-splitters>=1.0,<2.0
+langchain-pinecone>=0.2,<1.0
+
+# PDF Document Loader
+pypdf>=4.0,<5.0
+
+# Variables de entorno
+python-dotenv>=1.0,<2.0

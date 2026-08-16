@@ -1,0 +1,5 @@
+ipykernel
+qdrant-client
+streamlit
+langchain-openai
+python-dotenv

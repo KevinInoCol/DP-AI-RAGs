@@ -1,0 +1,21 @@
+name: rag-qdrant  # Fija el nombre del proyecto Compose, así el volumen no depende del nombre de la carpeta
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.19.0
+    container_name: qdrant
+    ports:
+      - "6333:6333"  # Puesto estándar para la API REST de Qdrant
+    volumes:
+      - qdrant_storage:/qdrant/storage  # Persistencia de dados
+    environment:
+      QDRANT__LOG_LEVEL: "INFO"  # Define el nível de log
+      QDRANT__SERVICE__HTTP_PORT: 6333  # Puesta para la API HTTP
+      QDRANT__STORAGE__DISK_THRESHOLD: 0.9  # Limite de utilizacion de disco antes del aviso (90%)
+
+volumes:
+  qdrant_storage:
+    driver: local
+
+#docker compose up
+#http://localhost:6333/dashboard
