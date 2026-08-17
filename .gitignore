@@ -15,5 +15,9 @@ __pycache__/
 venv/
 .ipynb_checkpoints/
 
+# Config local de Claude Code. Las skills son symlinks a ~/.claude/skills/,
+# así que en otra máquina quedarían como enlaces rotos.
+.claude/
+
 # macOS
 .DS_Store

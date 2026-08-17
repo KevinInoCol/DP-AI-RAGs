@@ -4,11 +4,18 @@ import uuid
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 
+from validacion_nombre_tenant_id import validar_qdrant
+
 client = QdrantClient("localhost")
 collections = client.get_collections()
 print(collections)
 
 collection_name = "tenant_id_amazon_images" #Nombre de la coleccion (prefijo tenant_id_ por convención multi-tenant)
+
+# Falla antes de tocar Qdrant si el nombre no cumple la convención
+_validacion = validar_qdrant(collection_name)
+if not _validacion.ok:
+    raise ValueError(f"Nombre de colección inválido: {_validacion.motivos}")
 
 # Si la colección ya existe la eliminamos antes de volver a crearla,
 # así el script se puede ejecutar varias veces sin el error 409 (Conflict).

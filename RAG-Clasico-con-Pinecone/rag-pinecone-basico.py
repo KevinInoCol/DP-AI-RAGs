@@ -15,6 +15,8 @@ load_dotenv()
 # Importaciones para trabajar con Pinecone
 from langchain_pinecone import PineconeVectorStore
 
+from validacion_nombre_tenant_id import validar_pinecone
+
 
 if __name__ == '__main__':
     #=================================== Paso 1: Document Loader =======================================
@@ -34,7 +36,13 @@ if __name__ == '__main__':
 
     #======================= Paso 4: VectorStore - Llevamos los Embeddings a Pinecone ====================
     pinecone_api_key = os.getenv("PINECONE_API_KEY")
-    index_name = os.getenv("PINECONE_INDEX_NAME", "langchain-pinecone-asistente-de-ventas-ai15")
+    index_name = os.getenv("PINECONE_INDEX_NAME", "tenant-id-asistente-de-ventas")
+
+    # Falla antes de llamar a la API si el nombre no es legal para Pinecone
+    # o no sigue la convención tenant-id-
+    _validacion = validar_pinecone(index_name)
+    if not _validacion.ok:
+        raise ValueError(f"Nombre de índice inválido: {_validacion.motivos}")
 
     vectorstore = PineconeVectorStore.from_documents(
         documents=chunks,
