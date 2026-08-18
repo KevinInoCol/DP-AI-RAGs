@@ -1,0 +1,136 @@
+"""
+RAG con Qdrant sobre el Manual de Trámites del Municipio de Girardota.
+
+Mismos 4 pasos y misma estructura que RAG-Clasico-con-Qdrant: lo único que
+cambia es la base de conocimiento y, por tanto, la colección destino. Sirve
+para mostrar que el pipeline no depende del documento — se cambia el PDF y el
+nombre de la colección, y el resto queda igual.
+
+Como los otros proyectos "Clasico", ingesta contra el Qdrant del VPS y no
+contra el contenedor local de RAG-Servidor-Qdrant.
+
+El documento son 95 páginas de trámites agrupados por secretaría, bastante más
+grande que el de DataPath: esperá varios cientos de chunks y el gasto de
+embeddings correspondiente.
+
+Configuración previa: copiar .env.example a .env y rellenar QDRANT_URL,
+QDRANT_API_KEY y OPENAI_API_KEY.
+
+Ejecutar:
+    python rag.py
+"""
+
+import os
+
+# Paso 1: Elección de la Técnica de DocumentLoader
+from langchain_community.document_loaders import PyPDFLoader
+
+# Paso 2: Elección de Técnica de Splitting
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+# Paso 3: Elección del Modelo de Word Embedding
+from langchain_openai import OpenAIEmbeddings
+
+# Paso 4: VectorStore
+# Patrón de: docs.langchain.com/oss/python/langchain/knowledge-base
+from langchain_qdrant import QdrantVectorStore
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, VectorParams
+
+from dotenv import load_dotenv
+
+from validacion_nombre_tenant_id import validar_qdrant
+
+load_dotenv()
+
+# ======================================= Configuración =========================================
+# Todo lo parametrizable vive acá arriba: se lee de un vistazo y se cambia en un
+# solo sitio, sin bucear en la lógica.
+
+# Paso 1
+RUTA_PDF = "Base_de_Conocimiento/MANUAL DE TRÁMITES - Municipio de Girardota.pdf"
+
+# Paso 2
+TAMANO_CHUNK = 500
+SOLAPAMIENTO_CHUNK = 200
+
+# Paso 3
+MODELO_EMBEDDING = "text-embedding-ada-002"
+
+# Paso 4 — Qdrant del VPS, no el docker-compose local
+QDRANT_URL = os.getenv("QDRANT_URL")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "tenant_id_municipio_girardota")
+
+
+def verificar_configuracion() -> None:
+    """Corta al arrancar si la configuración está mal.
+
+    Va antes del Paso 1 a propósito: si esperáramos al Paso 4, el script ya
+    habría leído el PDF y gastado una llamada de embeddings en OpenAI para
+    morir después en un error de configuración.
+    """
+    if not QDRANT_URL:
+        raise ValueError(
+            "Falta QDRANT_URL. Copiá .env.example a .env y poné la URL del Qdrant del VPS."
+        )
+
+    if not os.getenv("OPENAI_API_KEY"):
+        raise ValueError("Falta OPENAI_API_KEY en el .env.")
+
+    if not os.path.exists(RUTA_PDF):
+        raise FileNotFoundError(f"No se encontró el PDF: {RUTA_PDF}")
+
+    validacion = validar_qdrant(COLLECTION_NAME)
+    if not validacion.ok:
+        raise ValueError(f"Nombre de colección inválido: {validacion.motivos}")
+
+
+if __name__ == '__main__':
+    verificar_configuracion()
+
+    #=================================== Paso 1: Document Loader =======================================
+    loader = PyPDFLoader(RUTA_PDF)
+    documentos = loader.load()
+    print(f"Paso 1 — Cargadas {len(documentos)} páginas de {RUTA_PDF}")
+
+    #======================================= Paso 2: Chunking ===========================================
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=TAMANO_CHUNK,
+        chunk_overlap=SOLAPAMIENTO_CHUNK,
+    )
+    chunks = text_splitter.split_documents(documents=documentos)
+    print(f"Paso 2 — El documento se partió en {len(chunks)} chunks")
+
+    #========== Paso 3: Embeddings - Cargamos el Modelo de Embeddings para convertir los Chunks ==========
+    embedding_model = OpenAIEmbeddings(model=MODELO_EMBEDDING)
+
+    # El tamaño del vector lo dicta el modelo, no lo escribimos a mano: así el
+    # script sigue funcionando si mañana cambiamos de modelo de embeddings.
+    vector_size = len(embedding_model.embed_query("texto de muestra"))
+    print(f"Paso 3 — Modelo de embeddings listo, {vector_size} dimensiones por vector")
+
+    #================= Paso 4: VectorStore - Llevamos los Embeddings al Qdrant del VPS ==================
+    # Acá está la diferencia con los otros proyectos: en vez de QdrantClient("localhost")
+    # apuntamos al servidor remoto, que sí exige api_key.
+    client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, port=None)
+
+    if not client.collection_exists(COLLECTION_NAME):
+        client.create_collection(
+            collection_name=COLLECTION_NAME,
+            vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
+        )
+        print(f"Paso 4 — Colección '{COLLECTION_NAME}' creada en el VPS")
+    else:
+        print(f"Paso 4 — La colección '{COLLECTION_NAME}' ya existía, se le agregan los chunks")
+
+    vectorstore = QdrantVectorStore(
+        client=client,
+        collection_name=COLLECTION_NAME,
+        embedding=embedding_model,
+    )
+    vectorstore.add_documents(documents=chunks)
+
+    total = client.count(COLLECTION_NAME).count
+    print(f"\n✓ Ingesta completa en {QDRANT_URL}")
+    print(f"  Colección '{COLLECTION_NAME}': {total} vectores")
