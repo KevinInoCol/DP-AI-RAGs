@@ -48,7 +48,7 @@ TAMANO_CHUNK = 500
 SOLAPAMIENTO_CHUNK = 200
 
 # Paso 3
-MODELO_EMBEDDING = "text-embedding-ada-002"
+MODELO_EMBEDDING = "text-embedding-3-small"
 
 # Paso 4 — Qdrant del VPS, no el docker-compose local
 QDRANT_URL = os.getenv("QDRANT_URL")
@@ -106,7 +106,11 @@ if __name__ == '__main__':
     #================= Paso 4: VectorStore - Llevamos los Embeddings al Qdrant del VPS ==================
     # Acá está la diferencia con los otros proyectos: en vez de QdrantClient("localhost")
     # apuntamos al servidor remoto, que sí exige api_key.
-    client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+    #
+    # port=None es obligatorio: si no se pasa, qdrant-client le pega :6333 a la
+    # URL por su cuenta y el intento muere con "Connection refused", porque el
+    # proxy del VPS (EasyPanel) publica Qdrant en el 443 de https, no en el 6333.
+    client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, port=None)
 
     if not client.collection_exists(COLLECTION_NAME):
         client.create_collection(

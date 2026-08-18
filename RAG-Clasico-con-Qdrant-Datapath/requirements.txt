@@ -7,7 +7,7 @@ langchain-qdrant>=0.2,<1.0
 qdrant-client~=1.19.0
 
 # PDF Document Loader
-pypdf>=4.0,<5.0
+pypdf>=4.0,<7.0
 
 # Variables de entorno
 python-dotenv>=1.0,<2.0
