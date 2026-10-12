@@ -1,0 +1,59 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+python-dotenv==1.0.1
+llama-index-core>=0.14.0
+llama-index-embeddings-google-genai>=0.1.0   # embeddings Gemini vía LlamaIndex (splitter semántico + indexación)
+llama-index-embeddings-openai>=0.3.0        # embeddings OpenAI vía LlamaIndex (alternativa a Gemini)
+pypdf==5.1.0
+
+# Text Splitters de LangChain (splitters/langchain.py)
+langchain-text-splitters>=1.1.0
+langchain-experimental>=0.4.0     # SemanticChunker. "Sunset" por LangChain: solo para comparar
+beautifulsoup4>=4.12.0             # HTMLHeaderTextSplitter
+nltk>=3.9.0                        # NLTKTextSplitter (descarga punkt_tab la primera vez)
+tiktoken>=0.9.0
+
+# Etapa de indexación (embeddings.py)
+numpy>=1.26.0                      # índice vectorial coseno en memoria
+
+# Etapa de Vector Store (vectorstores.py): fuerza bruta vs. ANN
+qdrant-client>=1.7.0              # Qdrant: exacto (full scan) e HNSW (ANN)
+
+# Fuente Microsoft Graph (graph_source.py): OneDrive / SharePoint
+msal>=1.28.0                     # auth OAuth (device code) contra Entra ID
+requests>=2.31.0                 # llamadas a Microsoft Graph
+
+# Fuente Google Cloud Storage (gcs_source.py): PDFs desde un bucket
+google-cloud-storage>=2.16.0     # auth ADC / service account (no la API key de Gemini)
+
+# Para CodeSplitter (parser AST). El paquete "language-pack" trae los lenguajes
+# y sí ofrece wheels para Python 3.13/3.14.
+tree-sitter>=0.23.0
+tree-sitter-language-pack>=0.9.0
+
+# Document Loaders (Readers) de LlamaIndex
+llama-index-readers-file>=0.4.0   # PDFReader, PyMuPDFReader, UnstructuredReader
+pymupdf>=1.24.0                    # motor de PyMuPDFReader
+pymupdf4llm>=0.0.17               # PyMuPDF → Markdown estructurado (mejor para RAG)
+llama-cloud>=1.0                   # LlamaParse v2 · 4 tiers (requiere LLAMA_CLOUD_API_KEY). NO instalar junto a llama-parse (pide llama-cloud 0.x)
+
+# UnstructuredReader (particiona en elementos semánticos).
+# OJO: unstructured >=0.24 exige unstructured_inference (PyTorch, ~GB) para PDF,
+# aunque se use strategy="fast". pikepdf y pi-heif son obligatorias para PDF.
+unstructured>=0.16.0
+unstructured-inference>=1.0.0
+pikepdf>=9.0.0
+pi-heif>=0.20.0
+pdf2image>=1.17.0
+
+# PDFTableReader (extrae tablas). Requiere Ghostscript en el sistema:
+#   macOS:  brew install ghostscript
+llama-index-readers-pdf-table>=0.5.0
+camelot-py>=0.11.0
+opencv-python>=4.9.0
+
+# SmartPDFLoader (layout jerárquico). Requiere un servicio nlm-ingestor:
+#   docker run -p 5010:5010 ghcr.io/nlmatics/nlm-ingestor:latest
+#   y en .env: LLMSHERPA_API_URL=http://localhost:5010/api/parseDocument?renderFormat=all
+llama-index-readers-smart-pdf-loader>=0.5.0
