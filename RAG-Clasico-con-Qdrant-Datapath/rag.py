@@ -2,7 +2,7 @@
 RAG con Qdrant — los 4 pasos de siempre, pero apuntando al Qdrant del VPS.
 
 A diferencia de RAG-con-Qdrant-para-Textos-Amazon y RAG-con-Qdrant-para-Imagenes,
-que usan el contenedor local de RAG-Servidor-Qdrant, este script se conecta al
+que usan el contenedor local de RAG-Servidor-Qdrant-Local, este script se conecta al
 servidor Qdrant que tenemos desplegado en el VPS. La única diferencia real está
 en el Paso 4: el cliente se construye con url + api_key en lugar de localhost.
 

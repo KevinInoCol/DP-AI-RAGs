@@ -62,25 +62,39 @@ function MenuItem({ item, selected, onSelect, showQuality, maxQuality = 6 }) {
         {showQuality && item.quality != null && (
           <QualityMeter quality={item.quality} max={maxQuality} />
         )}
-        {item.requires_api_key && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <KeyRound
-                className={cn(
-                  'size-3.5',
-                  unavailable ? 'text-destructive/70' : 'text-amber-400/80',
-                )}
-              />
-            </TooltipTrigger>
-            <TooltipContent>
-              {unavailable
-                ? `Falta ${item.requires_env} en el .env`
-                : item.requires_env
-                  ? `Usa ${item.requires_env}`
-                  : 'Requiere API Key'}
-            </TooltipContent>
-          </Tooltip>
-        )}
+        {/* Columna de ancho fijo (Free o llave) para que las barras de calidad
+            queden alineadas en todas las filas. */}
+        <span className="flex w-8 justify-end">
+          {item.pricing?.kind === 'free' && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1 py-px font-mono text-[10px] font-medium leading-none text-emerald-400">
+                  Free
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{item.pricing.label || 'Gratis'}</TooltipContent>
+            </Tooltip>
+          )}
+          {item.requires_api_key && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <KeyRound
+                  className={cn(
+                    'size-3.5',
+                    unavailable ? 'text-destructive/70' : 'text-amber-400/80',
+                  )}
+                />
+              </TooltipTrigger>
+              <TooltipContent>
+                {unavailable
+                  ? `Falta ${item.requires_env} en el .env`
+                  : item.requires_env
+                    ? `Usa ${item.requires_env}`
+                    : 'Requiere API Key'}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </span>
       </span>
     </button>
   )
@@ -240,6 +254,13 @@ export default function Sidebar({
         <span className="mx-1.5">·</span>
         <span className="inline-flex items-center gap-1">
           <KeyRound className="size-3 text-destructive/70" /> key faltante
+        </span>
+        <span className="mx-1.5">·</span>
+        <span className="inline-flex items-center gap-1">
+          <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1 py-px text-[10px] leading-none text-emerald-400">
+            Free
+          </span>
+          gratis
         </span>
         <span className="mx-1.5">·</span>
         barras = calidad del loader

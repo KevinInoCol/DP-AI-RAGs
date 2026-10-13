@@ -2,17 +2,36 @@
 
 Proyectos de RAG con bases de datos vectoriales del programa AI Engineer de DataPath.
 
+Repositorio: https://github.com/KevinInoCol/DP-AI-RAGs
+
 | Carpeta | Qué hace | Vector store |
 |---|---|---|
-| `RAG-Servidor-Qdrant` | Servidor Qdrant compartido (docker-compose) | — |
-| `RAG-Clasico-con-Qdrant` | RAG sobre PDF contra el Qdrant del **VPS** | Qdrant remoto, colección `tenant_id_datapath` |
+| `RAG-Servidor-Qdrant-Local` | Servidor Qdrant compartido (docker-compose) | — |
+| `Proyecto-RAGs-v2` | **RAG Toolkit**: app web (FastAPI + React) para comparar loaders, splitters de LlamaIndex y LangChain, embeddings y vector stores, más un pipeline de ingesta de PDFs | Qdrant (pipeline) y NumPy/Qdrant (benchmark) |
+| `RAG-Clasico-con-Qdrant-Datapath` | RAG sobre PDF contra el Qdrant del **VPS** | Qdrant remoto, colección `tenant_id_datapath` |
+| `RAG-Clasico-con-Qdrant-Municipio` | El mismo pipeline sobre el Manual de Trámites de Girardota | Qdrant remoto, colección `tenant_id_municipio_girardota` |
 | `RAG-Clasico-con-Pinecone` | RAG básico sobre PDF con LangChain | Pinecone, índice `tenant-id-asistente-de-ventas` |
 | `RAG-con-Qdrant-para-Textos-Amazon` | Búsqueda semántica sobre nombres de producto | Qdrant local, colección `tenant_id_amazon_text` |
 | `RAG-con-Qdrant-para-Imagenes` | Búsqueda por texto o por imagen con CLIP | Qdrant local, colección `tenant_id_amazon_images` |
 
-`RAG-Clasico-con-Qdrant` es el único que **no** usa el contenedor local: apunta al
-Qdrant del VPS vía `QDRANT_URL` y `QDRANT_API_KEY`. Los dos proyectos de Amazon
-usan `RAG-Servidor-Qdrant`.
+Los dos RAG clásicos con Qdrant (`-Datapath` y `-Municipio`) **no** usan el
+contenedor local: apuntan al Qdrant del VPS vía `QDRANT_URL` y `QDRANT_API_KEY`.
+Los dos proyectos de Amazon usan `RAG-Servidor-Qdrant-Local`.
+
+## Proyecto-RAGs-v2 · RAG Toolkit
+
+Banco de pruebas para ver cada etapa de un RAG por separado:
+
+- **Document Loaders**: de PyPDF a LlamaParse, ordenados por calidad.
+- **Text Splitters**: las técnicas de **LlamaIndex** y las de **LangChain**, en
+  grupos separados, para comparar los chunks de cada una con el mismo texto.
+- **Embeddings**: Gemini u OpenAI, según la API key que haya en el `.env`.
+- **Vector Stores**: fuerza bruta frente a HNSW.
+- **Pipeline de ingesta**: el diagrama del flujo real (validación → OCR →
+  normalización → limpieza → chunking → embeddings → Qdrant), con las opciones y el
+  precio de cada etapa.
+
+Cómo levantar el backend y el frontend: [`Proyecto-RAGs-v2/Comandos.md`](Proyecto-RAGs-v2/Comandos.md).
 
 ## Convención de nombres
 
@@ -31,16 +50,19 @@ python validacion_nombre_tenant_id.py --qdrant tenant_id_ventas   # exit 1 si no
 python validacion_nombre_tenant_id.py --pinecone tenant-id-ventas
 ```
 
-Las cuatro copias son idénticas: si cambias una, replica el cambio en las otras tres.
+Las cinco copias son idénticas: si cambias una, replica el cambio en las otras
+cuatro. `Proyecto-RAGs-v2` aplica la misma regla en `Backend-RAGs/pipeline/sink/naming.py`.
 
 ## Puesta en marcha
 
 **1. Claves.** Cada proyecto que las necesita trae un `.env.example`; cópialo a `.env` y rellénalo:
 
 ```bash
-cp RAG-Clasico-con-Qdrant/.env.example RAG-Clasico-con-Qdrant/.env
+cp RAG-Clasico-con-Qdrant-Datapath/.env.example RAG-Clasico-con-Qdrant-Datapath/.env
+cp RAG-Clasico-con-Qdrant-Municipio/.env.example RAG-Clasico-con-Qdrant-Municipio/.env
 cp RAG-Clasico-con-Pinecone/.env.example RAG-Clasico-con-Pinecone/.env
 cp RAG-con-Qdrant-para-Textos-Amazon/.env.example RAG-con-Qdrant-para-Textos-Amazon/.env
+cp Proyecto-RAGs-v2/Backend-RAGs/.env.example Proyecto-RAGs-v2/Backend-RAGs/.env
 ```
 
 Los `.env` están en `.gitignore` y no deben subirse nunca.
@@ -48,7 +70,7 @@ Los `.env` están en `.gitignore` y no deben subirse nunca.
 **2. Servidor Qdrant.** Un solo contenedor sirve a los dos proyectos de Amazon:
 
 ```bash
-cd RAG-Servidor-Qdrant && docker compose up -d
+cd RAG-Servidor-Qdrant-Local && docker compose up -d
 ```
 
 Dashboard en http://localhost:6333/dashboard

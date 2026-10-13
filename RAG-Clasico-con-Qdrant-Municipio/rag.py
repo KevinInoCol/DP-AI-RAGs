@@ -7,7 +7,7 @@ para mostrar que el pipeline no depende del documento — se cambia el PDF y el
 nombre de la colección, y el resto queda igual.
 
 Como los otros proyectos "Clasico", ingesta contra el Qdrant del VPS y no
-contra el contenedor local de RAG-Servidor-Qdrant.
+contra el contenedor local de RAG-Servidor-Qdrant-Local.
 
 El documento son 95 páginas de trámites agrupados por secretaría, bastante más
 grande que el de DataPath: esperá varios cientos de chunks y el gasto de
