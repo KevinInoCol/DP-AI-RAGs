@@ -42,7 +42,7 @@ export default function DocumentInput({ text, onChangeText, onFile, onRun, loadi
           onChange={(e) => onChangeText(e.target.value)}
           placeholder="Pega aquí tu texto o sube un archivo (.txt, .md, .pdf, código…)"
           rows={10}
-          className="resize-y font-mono text-[13px] leading-relaxed"
+          className="min-h-40 resize-y font-mono text-[13px] leading-relaxed"
         />
       </div>
 
