@@ -1,21 +1,34 @@
-import pandas as pd
+import os
 import uuid
 
+import pandas as pd
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
+from dotenv import load_dotenv
 
 from validacion_nombre_tenant_id import validar_qdrant
 
-client = QdrantClient("localhost")
-collections = client.get_collections()
-print(collections)
+load_dotenv()
 
-collection_name = "tenant_id_amazon_text" #Nombre de la coleccion (prefijo tenant_id_ por convención multi-tenant)
+# Qdrant del VPS (ya no el docker-compose local)
+QDRANT_URL = os.getenv("QDRANT_URL")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+collection_name = os.getenv("QDRANT_COLLECTION") #Nombre de la coleccion (prefijo tenant_id_ por convención multi-tenant)
+
+if not QDRANT_URL:
+    raise ValueError("Falta QDRANT_URL en el .env (URL del Qdrant del VPS).")
+if not collection_name:
+    raise ValueError("Falta QDRANT_COLLECTION en el .env.")
 
 # Falla antes de tocar Qdrant si el nombre no cumple la convención
 _validacion = validar_qdrant(collection_name)
 if not _validacion.ok:
     raise ValueError(f"Nombre de colección inválido: {_validacion.motivos}")
+
+# port=None: sin él, qdrant-client le añade :6333 a la URL https del VPS y no conecta
+client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, port=None)
+collections = client.get_collections()
+print(collections)
 
 # Si la colección ya existe la eliminamos antes de volver a crearla,
 # así el script se puede ejecutar varias veces sin el error 409 (Conflict).
