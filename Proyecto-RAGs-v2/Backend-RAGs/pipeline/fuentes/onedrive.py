@@ -1,6 +1,6 @@
 """
-Fuente Microsoft Graph (OneDrive / SharePoint) para la ingesta RAG.
-Ruta: Backend-RAGs/pipeline/sources/onedrive.py
+Pipeline de ingesta RAG · 01 · FUENTE Microsoft Graph (OneDrive / SharePoint)
+Ruta: Backend-RAGs/pipeline/fuentes/onedrive.py
 
 Base del connector: autentica vía DEVICE CODE (cuenta personal o work) y lista /
 descarga PDFs por Microsoft Graph. La MISMA API (DriveItem) sirve para:

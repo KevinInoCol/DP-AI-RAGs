@@ -4,12 +4,17 @@
 //
 //   paso ─▶ paso ─▶ ◆ decisión ─┬─ No ─ rama izquierda ─┬─▶ paso …
 //                                └─ Sí ─ rama derecha  ──┘
-import { useEffect, useState } from 'react'
+//
+// Las etapas con `field` (fuente, loader, OCR, splitter, embeddings) son elegibles: un click en
+// una opción la selecciona para el panel "Ejecutar ingesta" del final.
+import { useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
+  Flag,
   BookOpen,
   Building2,
+  Check,
   ChevronDown,
   Database,
   Eraser,
@@ -26,6 +31,9 @@ import {
 } from 'lucide-react'
 import { fetchPipeline } from '../api'
 import { cn } from '@/lib/utils'
+import IngestPanel from './IngestPanel'
+import CollectionInput from './CollectionInput'
+import SourceInput from './SourceInput'
 
 const NODE_ICONS = {
   upload: UserRound,
@@ -39,7 +47,47 @@ const NODE_ICONS = {
   store: Database,
 }
 
-// Qué significa cada estado de opción (ver pipeline/flow.py).
+// Nombre corto de cada campo elegible de POST /ingest, en el orden del flujo.
+const FIELD_LABELS = {
+  source: 'Fuente',
+  loader: 'Loader',
+  ocr_engine: 'OCR',
+  splitter: 'Splitting',
+  embedder: 'Embeddings',
+}
+
+// La configuración se GUARDA SOLA en el navegador (por usuario y equipo, no en el
+// backend) en cuanto cambia: no hace falta ningún botón ni ingestar para que
+// sobreviva a una recarga.
+//   SELECTION_KEY · opción elegida en cada etapa { source, loader, ocr_engine, … }
+//   FORM_KEY      · lo escrito a mano { tenant, bucket, prefix }
+// Los PDFs subidos NO se guardan: el navegador no permite recuperar archivos.
+const SELECTION_KEY = 'rag-toolkit:ingest-selection'
+const FORM_KEY = 'rag-toolkit:ingest-form'
+
+// localStorage puede no existir o lanzar (modo privado, almacenamiento bloqueado):
+// entonces la configuración vale solo para esta sesión.
+function readStored(key) {
+  try {
+    return JSON.parse(localStorage.getItem(key)) || {}
+  } catch {
+    return {}
+  }
+}
+
+function writeStored(key, value) {
+  try {
+    if (value === null) localStorage.removeItem(key)
+    else localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // sin almacenamiento: no pasa nada
+  }
+}
+
+// Una opción se puede elegir si la ingesta la acepta (por defecto o elegible).
+const isPickable = (o) => o.status === 'active' || o.status === 'selectable'
+
+// Qué significa cada estado de opción (ver pipeline/flujo.py en el backend).
 const STATUS = {
   active: {
     label: 'En uso',
@@ -110,12 +158,40 @@ function ProviderLine({ provider }) {
   )
 }
 
-function OptionRow({ option }) {
+// `picker` = { selected, onSelect } en las etapas elegibles; sin él la opción solo
+// se muestra (y "En uso" se resalta en verde como antes).
+function OptionRow({ option, picker }) {
+  const pickable = picker && isPickable(option)
+  const selected = pickable && picker.selected === option.key
+  // En una etapa elegible "En uso" solo significa "por defecto": lo que manda es
+  // la selección, así que las dos se muestran como elegibles.
+  const status = picker && option.status === 'active' ? 'selectable' : option.status
   return (
     <li
+      role={pickable ? 'button' : undefined}
+      tabIndex={pickable ? 0 : undefined}
+      aria-pressed={pickable ? selected : undefined}
+      onClick={pickable ? () => picker.onSelect(option.key) : undefined}
+      onKeyDown={
+        pickable
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                picker.onSelect(option.key)
+              }
+            }
+          : undefined
+      }
       className={cn(
         'flex flex-col gap-1 rounded-md border px-3 py-2',
-        option.status === 'active' ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-border',
+        pickable &&
+          'cursor-pointer transition-colors outline-none hover:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring/50',
+        selected
+          ? 'border-primary bg-primary/10 ring-1 ring-primary/40'
+          : !picker && option.status === 'active'
+            ? 'border-emerald-500/30 bg-emerald-500/5'
+            : 'border-border',
+        picker && !pickable && 'opacity-60',
       )}
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -125,7 +201,13 @@ function OptionRow({ option }) {
         )}
         <span className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
           <PricePill pricing={option.pricing} />
-          <StatusPill status={option.status} />
+          {selected ? (
+            <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-full border border-primary/50 bg-primary/15 px-2 text-[11px] font-medium text-primary">
+              <Check className="size-3" /> Seleccionado
+            </span>
+          ) : (
+            <StatusPill status={status} />
+          )}
         </span>
       </div>
       {option.provider && <ProviderLine provider={option.provider} />}
@@ -141,11 +223,11 @@ function OptionRow({ option }) {
   )
 }
 
-function OptionGrid({ options }) {
+function OptionGrid({ options, picker }) {
   return (
     <ul className="grid grid-cols-1 gap-1.5 xl:grid-cols-2">
       {options.map((o) => (
-        <OptionRow key={o.key} option={o} />
+        <OptionRow key={o.key} option={o} picker={picker} />
       ))}
     </ul>
   )
@@ -153,10 +235,12 @@ function OptionGrid({ options }) {
 
 // Con `groups` (option_groups del backend) las opciones se muestran en bloques
 // separados, p. ej. los splitters de LlamaIndex y los de LangChain.
-function OptionList({ options, groups, defaultOpen = false }) {
+function OptionList({ options, groups, defaultOpen = false, picker }) {
   const [open, setOpen] = useState(defaultOpen)
   if (!options?.length) return null
-  const active = options.filter((o) => o.status === 'active')
+  const active = picker
+    ? options.filter((o) => o.key === picker.selected)
+    : options.filter((o) => o.status === 'active')
   return (
     <div className="flex flex-col gap-2">
       <button
@@ -174,7 +258,9 @@ function OptionList({ options, groups, defaultOpen = false }) {
           </span>
         )}
         {!open && active.length > 0 && (
-          <span className="text-foreground">· en uso: {active.map((o) => o.name).join(', ')}</span>
+          <span className="text-foreground">
+            · {picker ? 'elegido' : 'en uso'}: {active.map((o) => o.name).join(', ')}
+          </span>
         )}
       </button>
       {open &&
@@ -193,20 +279,20 @@ function OptionList({ options, groups, defaultOpen = false }) {
                   {g.note && (
                     <p className="text-[12px] leading-relaxed text-muted-foreground">{g.note}</p>
                   )}
-                  <OptionGrid options={list} />
+                  <OptionGrid options={list} picker={picker} />
                 </div>
               )
             })}
           </div>
         ) : (
-          <OptionGrid options={options} />
+          <OptionGrid options={options} picker={picker} />
         ))}
     </div>
   )
 }
 
 // Desplegable "¿Cómo funciona?": los pasos internos de una etapa, con ejemplo
-// antes → después (viene de la propia etapa en el backend, ver c_normalize.py).
+// antes → después (viene de la propia etapa en el backend, ver pipeline/etapas/e04_normalizacion.py).
 function HowItWorks({ info }) {
   const [open, setOpen] = useState(false)
   if (!info?.steps?.length) return null
@@ -263,7 +349,17 @@ function HowItWorks({ info }) {
   )
 }
 
-function StepCard({ node, index, icon: Icon, defaultOpen, tone = 'default' }) {
+// `children`: contenido propio de la etapa debajo de sus opciones (p. ej. la zona
+// para subir PDFs de la etapa 01).
+function StepCard({
+  node,
+  index,
+  icon: Icon,
+  defaultOpen,
+  tone = 'default',
+  picker,
+  children,
+}) {
   return (
     <div
       className={cn(
@@ -312,9 +408,11 @@ function StepCard({ node, index, icon: Icon, defaultOpen, tone = 'default' }) {
             options={node.options}
             groups={node.option_groups}
             defaultOpen={defaultOpen}
+            picker={picker}
           />
         </div>
       )}
+      {children && <div className="mt-3 border-t border-border pt-3">{children}</div>}
     </div>
   )
 }
@@ -355,20 +453,26 @@ function BranchLabel({ yes }) {
   )
 }
 
-function Branch({ branch, yes, icon }) {
+function Branch({ branch, yes, icon, number, pickerFor }) {
   return (
     <div className="flex min-w-0 flex-col items-center">
       <div className="h-5 w-px bg-border" aria-hidden />
       <BranchLabel yes={yes} />
       <div className="h-3 w-px bg-border" aria-hidden />
-      <StepCard node={branch} icon={icon} defaultOpen={yes} />
+      <StepCard
+        node={branch}
+        index={number}
+        icon={icon}
+        defaultOpen={yes}
+        picker={pickerFor(branch)}
+      />
       {/* Estira la línea hasta abajo para que ambas ramas se unan a la misma altura. */}
       <div className="min-h-5 w-px flex-1 bg-border" aria-hidden />
     </div>
   )
 }
 
-function DecisionNode({ node }) {
+function DecisionNode({ node, pickerFor }) {
   const icon = node.id === 'needs_ocr' ? ScanText : undefined
   return (
     <div className="flex w-full flex-col items-center">
@@ -381,8 +485,15 @@ function DecisionNode({ node }) {
         {/* Barras horizontales que abren y cierran la bifurcación (centro de cada columna). */}
         <div className="absolute left-1/4 right-1/4 top-0 h-px bg-border" aria-hidden />
         <div className="absolute bottom-0 left-1/4 right-1/4 h-px bg-border" aria-hidden />
-        <Branch branch={node.branches.no} yes={false} />
-        <Branch branch={node.branches.yes} yes icon={icon} />
+        {/* Las dos ramas son la MISMA etapa (03): cada página va por una sola. */}
+        <Branch branch={node.branches.no} yes={false} number={node.number} pickerFor={pickerFor} />
+        <Branch
+          branch={node.branches.yes}
+          yes
+          icon={icon}
+          number={node.number}
+          pickerFor={pickerFor}
+        />
       </div>
     </div>
   )
@@ -402,19 +513,143 @@ function Legend() {
         <PricePill key={k} pricing={{ kind: k, label: '' }} />
       ))}
       <span>· precios de lista en USD</span>
+      <span className="basis-full text-[12px]">
+        Haz click en una opción elegible de Carga, Loader, OCR, Chunking o Embeddings para usarla en
+        la ingesta. Los PDFs se suben en la etapa 01 y el nombre de la colección se elige en la 09.
+      </span>
     </div>
+  )
+}
+
+// Resumen del pipeline COMPLETO para el panel de ingesta, en el orden del diagrama:
+// una fila por etapa (las dos ramas de la 03 por separado) y, al final, la ruta de
+// búsqueda que decide Qdrant. `chosen` = la elige el usuario (se resalta); el resto
+// es fijo. Sale de los nodos del backend: si cambia una etapa, cambia el resumen.
+function summaryRows(pipeline, selection) {
+  const optionName = (node) => node.options.find((o) => o.key === selection[node.field])?.name
+  const rows = []
+  for (const node of pipeline?.nodes || []) {
+    if (node.kind === 'decision') {
+      const branches = Object.values(node.branches)
+      if (branches.some((b) => b.field)) {
+        for (const b of branches) {
+          rows.push({
+            key: b.field || b.title,
+            number: node.number,
+            title: b.title,
+            value: optionName(b),
+            chosen: Boolean(b.field),
+          })
+        }
+      } else {
+        rows.push({
+          key: node.id,
+          number: null,
+          title: 'Ruta de búsqueda',
+          value: 'La decide Qdrant: fuerza bruta → HNSW según crece',
+          auto: true,
+        })
+      }
+      continue
+    }
+    rows.push({
+      key: node.field || node.id,
+      number: node.number,
+      title: node.title,
+      value: node.field ? optionName(node) : node.provider,
+      // El nombre de la colección (09) también lo elige el usuario.
+      chosen: Boolean(node.field) || node.id === 'store',
+    })
+  }
+  return rows
+}
+
+// Nodos (o ramas) con `field`: las etapas que se eligen por ingesta.
+function pickableStages(pipeline) {
+  const out = []
+  for (const node of pipeline?.nodes || []) {
+    const parts = node.kind === 'decision' ? Object.values(node.branches) : [node]
+    for (const p of parts) if (p.field) out.push(p)
+  }
+  return out.sort(
+    (a, b) => Object.keys(FIELD_LABELS).indexOf(a.field) - Object.keys(FIELD_LABELS).indexOf(b.field),
+  )
+}
+
+// Cierre del diagrama: después de la última decisión no hay más etapas.
+function EndMarker() {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[12px] font-medium text-emerald-400">
+      <Flag className="size-3.5" /> Fin · la colección queda lista para consultar
+    </span>
   )
 }
 
 export default function PipelineView() {
   const [pipeline, setPipeline] = useState(null)
   const [error, setError] = useState(null)
+  // { ocr_engine, splitter, embedder } → clave elegida; arranca en la opción "active".
+  const [selection, setSelection] = useState({})
+  const [defaults, setDefaults] = useState({})
+  // Hasta que el pipeline cargue y se restaure lo guardado, no se escribe nada (si
+  // no, el estado vacío inicial pisaría la configuración guardada).
+  const [restored, setRestored] = useState(false)
+  // Documentos a ingestar (etapa 01) y tenant. Bucket, prefijo y tenant se guardan;
+  // los archivos no.
+  const [docs, setDocs] = useState(() => {
+    const form = readStored(FORM_KEY)
+    return { files: [], bucket: form.bucket || '', prefix: form.prefix || '' }
+  })
+  const [tenant, setTenant] = useState(() => readStored(FORM_KEY).tenant || '')
+  // Nombre final de la colección según el backend (lo calcula CollectionInput).
+  const [collection, setCollection] = useState(null)
 
   useEffect(() => {
     fetchPipeline()
-      .then(setPipeline)
+      .then((data) => {
+        setPipeline(data)
+        const initial = {}
+        const stored = readStored(SELECTION_KEY)
+        const chosen = {}
+        for (const stage of pickableStages(data)) {
+          initial[stage.field] = stage.options.find((o) => o.status === 'active')?.key ?? null
+          // Solo se restaura lo que sigue existiendo y siendo elegible en el catálogo.
+          const ok = stage.options.some((o) => o.key === stored[stage.field] && isPickable(o))
+          chosen[stage.field] = ok ? stored[stage.field] : initial[stage.field]
+        }
+        setDefaults(initial)
+        setSelection(chosen)
+        setRestored(true)
+      })
       .catch((e) => setError(e.message))
   }, [])
+
+  const stages = useMemo(() => pickableStages(pipeline), [pipeline])
+  const rows = useMemo(() => summaryRows(pipeline, selection), [pipeline, selection])
+
+  const same = (a, b) => stages.every((st) => a[st.field] === b[st.field])
+
+  // Guardado automático: cada cambio se escribe en cuanto ocurre.
+  useEffect(() => {
+    if (restored) writeStored(SELECTION_KEY, selection)
+  }, [restored, selection])
+
+  useEffect(() => {
+    writeStored(FORM_KEY, { tenant, bucket: docs.bucket, prefix: docs.prefix })
+  }, [tenant, docs.bucket, docs.prefix])
+
+  // Vuelve a las opciones por defecto de cada etapa (no borra tenant ni bucket).
+  function resetSelection() {
+    setSelection(defaults)
+  }
+
+  const pickerFor = (node) =>
+    node.field
+      ? {
+          selected: selection[node.field],
+          onSelect: (key) => setSelection((prev) => ({ ...prev, [node.field]: key })),
+        }
+      : undefined
 
   if (error) {
     return (
@@ -432,8 +667,8 @@ export default function PipelineView() {
     )
   }
 
-  // Numeración solo para los pasos (las decisiones no llevan número).
-  let stepNo = 0
+  // El número de cada etapa viene del backend (`number` en pipeline/flujo.py): es
+  // el mismo que su archivo en pipeline/etapas/, así pantalla y código coinciden.
   return (
     <div className="flex flex-col gap-6">
       <Legend />
@@ -442,20 +677,46 @@ export default function PipelineView() {
           <div key={node.id} className="flex w-full flex-col items-center">
             {i > 0 && <Connector />}
             {node.kind === 'decision' ? (
-              <DecisionNode node={node} />
+              <DecisionNode node={node} pickerFor={pickerFor} />
             ) : (
               // Los pasos simples se centran a un ancho legible; las ramas usan todo.
               <div className="w-full max-w-4xl">
                 <StepCard
                   node={node}
-                  index={++stepNo}
+                  index={node.number}
                   icon={NODE_ICONS[node.id]}
                   tone={node.kind === 'end' ? 'end' : 'default'}
-                />
+                  picker={pickerFor(node)}
+                >
+                  {node.field === 'source' && (
+                    <SourceInput source={selection.source} docs={docs} onChange={setDocs} />
+                  )}
+                  {node.id === 'store' && (
+                    <CollectionInput
+                      tenant={tenant}
+                      onTenantChange={setTenant}
+                      embedder={selection.embedder}
+                      onPreview={setCollection}
+                    />
+                  )}
+                </StepCard>
               </div>
             )}
           </div>
         ))}
+        <Connector />
+        <EndMarker />
+        {/* El panel de ingesta no es una etapa: va separado del diagrama. */}
+        <div className="mt-10" />
+        <IngestPanel
+          rows={rows}
+          selection={selection}
+          docs={docs}
+          tenant={tenant}
+          collection={collection}
+          isDefault={same(selection, defaults)}
+          onReset={resetSelection}
+        />
       </div>
     </div>
   )

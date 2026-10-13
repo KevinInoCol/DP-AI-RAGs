@@ -1,6 +1,6 @@
 """
-Pipeline de ingesta RAG · A · VALIDAR EXTRACCIÓN
-Ruta: Backend-RAGs/pipeline/stages/a_extraction_validator.py
+Pipeline de ingesta RAG · 02 · VALIDAR EXTRACCIÓN
+Ruta: Backend-RAGs/pipeline/etapas/e02_validacion.py
 
 Paso 1 del pipeline (la "puerta de robustez"): ANTES de extraer nada, inspecciona
 la CAPA DE TEXTO NATIVA del PDF (sin OCR) para clasificar cada página y decidir su
@@ -8,7 +8,7 @@ ruta: texto nativo → loader (PyMuPDF4LLM) · escaneada/ilegible → OCR.
 
 ⚠️ Clave: se analiza el texto NATIVO (`page.get_text()`), que es barato y no
 depende del loader. Si se mirara la salida de pymupdf4llm, su auto-OCR (en inglés)
-OCULTARÍA qué páginas son escaneadas (ver pipeline/stages/b_ocr.py).
+OCULTARÍA qué páginas son escaneadas (ver pipeline/etapas/e03_ocr.py).
 
 Veredictos por página:
   ok       -> texto nativo sano                         → chunkear normal
@@ -118,7 +118,7 @@ def _summarize(per_page: list[dict[str, Any]]) -> dict[str, Any]:
     else:
         doc = "ok"
 
-    # Índices 0-based de las páginas a mandar a OCR (consumido por stages/b_ocr.py).
+    # Índices 0-based de las páginas a mandar a OCR (consumido por etapas/e03_ocr.py).
     ocr_pages = [pp["index"] for pp in per_page if pp["verdict"] in ("scanned", "garbage")]
     return {
         "doc_verdict": doc,

@@ -1,11 +1,14 @@
 """
-Pipeline de ingesta RAG · E · CHUNKING ESTRUCTURAL (Markdown)
-Ruta: Backend-RAGs/pipeline/stages/e_chunking.py
+Pipeline de ingesta RAG · 06 · CHUNKING (estructural por defecto o un splitter del catálogo)
+Ruta: Backend-RAGs/pipeline/etapas/e06_chunking.py
 
-Paso 4 del pipeline: divide el Markdown en chunks CONSCIENTES DE LA ESTRUCTURA,
-no por tamaño a ciegas. Aprovecha los headers (#/##/...) que trae pymupdf4llm.
+Divide el Markdown del documento en chunks. Por defecto (INGEST_SPLITTER) el corte
+es CONSCIENTE DE LA ESTRUCTURA, no por tamaño a ciegas: aprovecha los headers
+(#/##/...) que trae pymupdf4llm. Con otra clave (`splitter` de POST /ingest) se
+usa cualquier técnica del catálogo de componentes/splitters con sus parámetros
+por defecto, salvo las de SPLITTERS_NOT_FOR_INGEST.
 
-Estrategia (2 fases, vía LlamaIndex):
+Estrategia por defecto (2 fases, vía LlamaIndex):
   1. MarkdownNodeParser  -> corta por secciones/headers (mantiene la jerarquia de
      titulos en la metadata; no parte tablas dentro de una seccion).
   2. SentenceSplitter    -> sub-divide las secciones que exceden `chunk_size`
@@ -25,8 +28,31 @@ from typing import Any
 from llama_index.core import Document
 from llama_index.core.node_parser import MarkdownNodeParser, SentenceSplitter
 
+from componentes.splitters import list_splitters, split_text
+
 DEFAULT_CHUNK_SIZE = 512      # tokens
 DEFAULT_CHUNK_OVERLAP = 64    # tokens
+
+# Splitter por defecto de la ingesta: Markdown por secciones + SentenceSplitter.
+INGEST_SPLITTER = "markdown_structural"
+
+# Splitters del catálogo que NO sirven para la ingesta: esperan código, JSON o HTML
+# y la ingesta les pasa el Markdown de un PDF. Siguen comparables en su pestaña.
+SPLITTERS_NOT_FOR_INGEST = {"code", "lc_code", "lc_json", "lc_html_header"}
+
+
+def is_valid_splitter(key: str) -> bool:
+    """True si la clave es el chunking estructural o una técnica apta del catálogo."""
+    if key in SPLITTERS_NOT_FOR_INGEST:
+        return False
+    return key == INGEST_SPLITTER or key in {s["key"] for s in list_splitters()}
+
+
+def chunk_document(markdown: str, splitter: str, source: str) -> list[dict[str, Any]]:
+    """Chunks del documento con el splitter elegido (validado con is_valid_splitter)."""
+    if splitter == INGEST_SPLITTER:
+        return chunk_markdown(markdown, metadata={"source": source})
+    return split_text(splitter, markdown)
 
 
 def chunk_markdown(

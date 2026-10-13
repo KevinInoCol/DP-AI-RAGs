@@ -1,1 +1,1 @@
-"""Etapas del pipeline de ingesta, en orden de ejecución (a_ … f_)."""
+"""Etapas del pipeline de ingesta, numeradas como en la pestaña Pipeline (e02 … e09)."""

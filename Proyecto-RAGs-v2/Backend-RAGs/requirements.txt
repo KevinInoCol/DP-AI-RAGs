@@ -14,17 +14,17 @@ beautifulsoup4>=4.12.0             # HTMLHeaderTextSplitter
 nltk>=3.9.0                        # NLTKTextSplitter (descarga punkt_tab la primera vez)
 tiktoken>=0.9.0
 
-# Etapa de indexación (embeddings.py)
+# Embeddings (componentes/embeddings)
 numpy>=1.26.0                      # índice vectorial coseno en memoria
 
-# Etapa de Vector Store (vectorstores.py): fuerza bruta vs. ANN
+# Vector Store (componentes/vectorstores): fuerza bruta vs. ANN
 qdrant-client>=1.7.0              # Qdrant: exacto (full scan) e HNSW (ANN)
 
 # Fuente Microsoft Graph (graph_source.py): OneDrive / SharePoint
 msal>=1.28.0                     # auth OAuth (device code) contra Entra ID
 requests>=2.31.0                 # llamadas a Microsoft Graph
 
-# Fuente Google Cloud Storage (gcs_source.py): PDFs desde un bucket
+# Fuente Google Cloud Storage (pipeline/fuentes/gcs.py): PDFs desde un bucket
 google-cloud-storage>=2.16.0     # auth ADC / service account (no la API key de Gemini)
 
 # Para CodeSplitter (parser AST). El paquete "language-pack" trae los lenguajes

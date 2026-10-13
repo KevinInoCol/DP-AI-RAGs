@@ -1,7 +1,43 @@
-# Backend-RAGs · API de Text Splitters (FastAPI + LlamaIndex)
+# Backend-RAGs · API del RAG Toolkit (FastAPI + LlamaIndex)
 
-API que aplica los distintos **Text Splitters / Node Parsers** de LlamaIndex
-sobre un texto y devuelve los chunks resultantes.
+API con dos mitades:
+
+- **Banco de pruebas:** compara técnicas de cada componente de un RAG (Document
+  Loaders, Text Splitters, Embeddings, Vector Stores), una pestaña por componente.
+- **Pipeline de ingesta:** lleva PDFs hasta Qdrant en 9 etapas, las mismas que
+  dibuja la pestaña "Pipeline de ingesta", eligiendo una opción de cada componente.
+
+## Estructura
+
+```
+Backend-RAGs/
+  main.py              arma la app: CORS + routers (no tiene endpoints propios)
+  config.py            TODAS las variables de entorno, en un solo lugar
+  api/
+    schemas.py         modelos de las peticiones JSON
+    routers/
+      banco.py         /loaders /load /splitters /split /embedders /embed /index /search /vectorstores…
+      pipeline.py      /pipeline /ocr-engines
+      ingesta.py       /ingest /gcs/pdfs /ingest/gcs  (SSE)
+      sistema.py       /health /extract
+  componentes/         catálogo + implementación de cada componente (banco e ingesta)
+    loaders/           catalogo.py · locales.py · llamaparse.py
+    splitters/         llamaindex.py · langchain.py · common.py
+    embeddings/        proveedores.py · indice_memoria.py (solo banco)
+    vectorstores/      qdrant.py (cliente compartido) · benchmark.py (solo banco)
+  pipeline/
+    orquestador.py     encadena las etapas y emite eventos de progreso
+    flujo.py           describe el flujo para la UI (GET /pipeline)
+    naming.py          nombre de la colección de Qdrant por tenant
+    fuentes/           01 · gcs.py · onedrive.py
+    etapas/            e02_validacion · e03_loader · e03_ocr · e04_normalizacion · e05_limpieza
+                       e06_chunking · e07_metadata · e08_embeddings · e09_indexado
+  scripts/             pruebas manuales (onedrive_test.py: python -m scripts.onedrive_test)
+  tests/               pytest
+```
+
+El número de cada etapa es el de su tarjeta en la pestaña, y el campo "módulo"
+de cada tarjeta apunta a su archivo.
 
 ## Instalación (conda)
 
@@ -60,21 +96,31 @@ Docs interactivas: http://localhost:8005/docs
 
 ## Endpoints
 
-| Método | Ruta         | Descripción                                  |
-|--------|--------------|----------------------------------------------|
-| GET    | `/splitters` | Catálogo de técnicas, agrupadas por framework (LlamaIndex / LangChain) |
-| POST   | `/split`     | Divide un texto con el splitter elegido      |
-| POST   | `/extract`   | Extrae texto de un archivo (.txt/.md/.pdf…)  |
-| GET    | `/embedders` | Modelos de embedding (Google u OpenAI)       |
-| POST   | `/ingest`    | Ingesta de PDFs a Qdrant (SSE)               |
-| GET    | `/health`    | Estado del servicio y claves cargadas        |
+| Router | Método | Ruta | Descripción |
+|---|---|---|---|
+| banco | GET | `/loaders` | Catálogo de Document Loaders, de peor a mejor |
+| banco | POST | `/load` | Extrae un archivo con el loader elegido |
+| banco | GET | `/splitters` | Catálogo de técnicas, agrupadas por framework (LlamaIndex / LangChain) |
+| banco | POST | `/split` | Divide un texto con el splitter elegido |
+| banco | GET | `/embedders` | Modelos de embedding (Google u OpenAI) |
+| banco | POST | `/embed` | Embebe textos y devuelve stats + preview de cada vector |
+| banco | POST | `/index` · `/search` | Índice en memoria: indexar chunks y consultarlos |
+| banco | GET | `/vectorstores` | Motores de índice (fuerza bruta vs. HNSW) |
+| banco | POST | `/vectorstores/benchmark` | Compara build, búsqueda y recall@k |
+| pipeline | GET | `/pipeline` | Flujo de ingesta con las opciones de cada etapa |
+| pipeline | GET | `/ocr-engines` | Motores de OCR elegibles para la ingesta |
+| ingesta | POST | `/ingest` | Ingesta de PDFs subidos a Qdrant (SSE): `ocr_engine`, `splitter`, `embedder` opcionales |
+| ingesta | GET | `/gcs/pdfs` | Lista los PDFs de un bucket de GCS |
+| ingesta | POST | `/ingest/gcs` | Ingesta de los PDFs de un bucket de GCS (SSE) |
+| sistema | GET | `/health` | Estado del servicio y claves cargadas |
+| sistema | POST | `/extract` | Extrae texto de un archivo (.txt/.md/.pdf…) |
 
 ## Splitters incluidos
 
-Están separados por framework en el paquete `splitters/`: cada catálogo vive en
+Están separados por framework en el paquete `componentes/splitters/`: cada catálogo vive en
 su propio módulo y la UI los muestra en dos grupos.
 
-### LlamaIndex (`splitters/llamaindex.py`)
+### LlamaIndex (`componentes/splitters/llamaindex.py`)
 
 **🟢 Sin API Key**
 - `SentenceSplitter`
@@ -85,7 +131,7 @@ su propio módulo y la UI los muestra en dos grupos.
 **🔵 Con API Key (embeddings: Google u OpenAI)**
 - `SemanticSplitterNodeParser` — usa el mismo modelo que la indexación
 
-### LangChain (`splitters/langchain.py`, claves `lc_*`)
+### LangChain (`componentes/splitters/langchain.py`, claves `lc_*`)
 
 > En LangChain `chunk_size` se mide en **caracteres** (salvo `TokenTextSplitter`
 > y el modo "tokens" del recursivo). En LlamaIndex se mide en tokens.

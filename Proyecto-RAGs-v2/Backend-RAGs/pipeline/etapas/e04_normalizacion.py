@@ -1,6 +1,6 @@
 """
-Pipeline de ingesta RAG · C · NORMALIZAR TEXTO
-Ruta: Backend-RAGs/pipeline/stages/c_normalize.py
+Pipeline de ingesta RAG · 04 · NORMALIZAR TEXTO
+Ruta: Backend-RAGs/pipeline/etapas/e04_normalizacion.py
 
 Paso 2 del pipeline: limpia la suciedad tipográfica que traen los PDFs y que
 degrada los embeddings, SIN romper la estructura Markdown de pymupdf4llm

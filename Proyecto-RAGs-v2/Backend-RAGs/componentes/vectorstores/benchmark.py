@@ -1,5 +1,8 @@
 """
-Etapa de VECTOR STORE: comparar cómo se INDEXAN y BUSCAN los vectores.
+Benchmark de VECTOR STORES: comparar cómo se INDEXAN y BUSCAN los vectores.
+
+Lo usa la pestaña "Vector Store" del banco. La ingesta no pasa por aquí: escribe en
+Qdrant con pipeline/etapas/e09_indexado.py (mismo cliente, qdrant.py).
 
 El eje de comparación es Fuerza Bruta (exacto) vs. ANN (aproximado), y el motor
 real es **Qdrant** (base de datos vectorial, corre como servicio; credenciales en
@@ -25,46 +28,20 @@ Para que el trade-off sea VISIBLE con documentos pequeños, el benchmark rellena
 recall (se mide contra el exacto sobre el MISMO conjunto), solo llevan el índice a
 una escala donde ANN vs. exacto se nota.
 
-Todos los vectores llegan ya L2-normalizados desde embeddings.py; usamos distancia
+Todos los vectores llegan ya L2-normalizados desde componentes/embeddings; usamos distancia
 COSINE en Qdrant.
 """
 
 from __future__ import annotations
 
-import os
 import time
 from typing import Any
 
 import numpy as np
 
-from embeddings import embed_documents, embed_query
+from componentes.embeddings import embed_documents, embed_query
 
-
-# --------------------------------------------------------------------------- #
-# Conexión a Qdrant
-# --------------------------------------------------------------------------- #
-def _qdrant_client():
-    """Cliente de Qdrant a partir de QDRANT_URL / QDRANT_API_KEY (.env).
-
-    Si la URL es https sin puerto explícito (típico de despliegues detrás de un
-    proxy, p.ej. easypanel), qdrant-client asumiría el 6333 y daría "connection
-    refused". En ese caso forzamos el puerto 443.
-    """
-    url = os.getenv("QDRANT_URL")
-    if not url:
-        raise RuntimeError(
-            "Falta QDRANT_URL. Define en .env la URL de tu servidor Qdrant "
-            "(y QDRANT_API_KEY si aplica) para usar los motores de Qdrant."
-        )
-    from urllib.parse import urlparse
-
-    from qdrant_client import QdrantClient
-
-    kwargs: dict[str, Any] = {"url": url, "api_key": os.getenv("QDRANT_API_KEY"), "timeout": 120}
-    parsed = urlparse(url)
-    if parsed.scheme == "https" and parsed.port is None:
-        kwargs["port"] = 443
-    return QdrantClient(**kwargs)
+from .qdrant import qdrant_client
 
 
 # --------------------------------------------------------------------------- #
@@ -105,7 +82,7 @@ class QdrantStore:
     def build(self, vectors: np.ndarray) -> None:
         from qdrant_client import models as qm
 
-        client = _qdrant_client()
+        client = qdrant_client()
         self.client = client
         dim = int(vectors.shape[1])
 

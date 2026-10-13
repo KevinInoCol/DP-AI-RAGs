@@ -1,6 +1,6 @@
 """
-Pipeline de ingesta RAG · D · QUITAR BOILERPLATE (encabezados y pies)
-Ruta: Backend-RAGs/pipeline/stages/d_boilerplate.py
+Pipeline de ingesta RAG · 05 · QUITAR BOILERPLATE (encabezados y pies)
+Ruta: Backend-RAGs/pipeline/etapas/e05_limpieza.py
 
 Elimina encabezados, pies de página, numeración y avisos que se repiten en el
 borde de muchas páginas y contaminan los chunks y el retrieval.

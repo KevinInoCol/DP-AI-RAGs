@@ -1,9 +1,9 @@
 """
 Text Splitters (chunking) organizados por framework.
 
-  splitters/llamaindex.py  -> Node Parsers de LlamaIndex (claves sin prefijo)
-  splitters/langchain.py   -> Text Splitters de LangChain (claves con prefijo `lc_`)
-  splitters/common.py      -> conteo de tokens y formato de chunk compartidos
+  llamaindex.py  -> Node Parsers de LlamaIndex (claves sin prefijo)
+  langchain.py   -> Text Splitters de LangChain (claves con prefijo `lc_`)
+  common.py      -> conteo de tokens y formato de chunk compartidos
 
 Cada catálogo vive en su módulo y no importa al otro. Este paquete los une para
 la API: `list_splitters` marca cada técnica con su `framework` y `split_text`

@@ -1,8 +1,8 @@
 """
-Fuente Google Cloud Storage (GCS) para la ingesta RAG.
-Ruta: Backend-RAGs/pipeline/sources/gcs.py
+Pipeline de ingesta RAG · 01 · FUENTE Google Cloud Storage (GCS)
+Ruta: Backend-RAGs/pipeline/fuentes/gcs.py
 
-Lista y descarga PDFs de un bucket de GCS. Alimenta el mismo orquestador (pipeline/orchestrator.py).
+Lista y descarga PDFs de un bucket de GCS. Alimenta el mismo orquestador (pipeline/orquestador.py).
 
 Auth: credenciales de GCP (ADC). NO usa la GOOGLE_API_KEY de Gemini — esa es de la
 API de Gemini, no de GCS. Opciones:
@@ -51,6 +51,22 @@ def list_pdfs(bucket: str, prefix: str = "") -> list[dict[str, Any]]:
                 }
             )
     return out
+
+
+def explain_error(exc: Exception, bucket: str) -> str:
+    """Mensaje accionable para los errores típicos de GCS (permiso, bucket inexistente)."""
+    try:
+        from google.api_core import exceptions as gexc
+    except ImportError:
+        return str(exc)
+    if isinstance(exc, gexc.Forbidden):
+        return (
+            f"Sin permiso para leer gs://{bucket}. La cuenta de las credenciales de GCP "
+            "necesita roles/storage.objectViewer sobre ese bucket."
+        )
+    if isinstance(exc, gexc.NotFound):
+        return f"No existe el bucket gs://{bucket} (revisa el nombre, sin 'gs://')."
+    return str(exc)
 
 
 def download(bucket: str, name: str) -> bytes:

@@ -1,8 +1,8 @@
 """
-Pipeline de ingesta RAG · B · OCR CONTROLADO (español)
-Ruta: Backend-RAGs/pipeline/stages/b_ocr.py
+Pipeline de ingesta RAG · 03 (rama Sí) · OCR CONTROLADO (español)
+Ruta: Backend-RAGs/pipeline/etapas/e03_ocr.py
 
-OCR de las páginas escaneadas que marca a_extraction_validator.py, EN ESPAÑOL
+OCR de las páginas escaneadas que marca e02_validacion.py, EN ESPAÑOL
 (por defecto `spa+eng` — Tesseract combina idiomas, robusto para docs mixtos),
 en vez del auto-OCR de pymupdf4llm que corre en INGLÉS y destroza tildes/ñ
 (probado: "daños" -> "danos", que es otra palabra).
@@ -27,6 +27,8 @@ from typing import Any
 
 import pymupdf
 
+import config
+
 # `spa+eng`: español primero, con inglés de respaldo para PDFs mixtos.
 DEFAULT_LANGUAGE = "spa+eng"
 DEFAULT_DPI = 200  # 200-300 dpi da buen OCR sin disparar el costo/tiempo
@@ -43,7 +45,7 @@ _TESSDATA_CANDIDATES = (
 
 def resolve_tessdata() -> str | None:
     """Ubica la carpeta `tessdata`. Respeta TESSDATA_PREFIX si está definido."""
-    env = os.getenv("TESSDATA_PREFIX")
+    env = config.TESSDATA_PREFIX
     if env and os.path.isdir(env):
         return env
     for cand in _TESSDATA_CANDIDATES:
@@ -84,7 +86,7 @@ DEFAULT_OCR_ENGINE = "tesseract"
 def _ocr_engines() -> dict[str, dict[str, Any]]:
     """Tesseract + un motor por tier de LlamaParse (import diferido: el catálogo
     de loaders es la fuente de verdad de los tiers y sus precios)."""
-    from loaders import LLAMAPARSE_TIERS, llamaparse_cost_per_1k_pages
+    from componentes.loaders import LLAMAPARSE_TIERS, llamaparse_cost_per_1k_pages
 
     engines: dict[str, dict[str, Any]] = {
         "tesseract": {
@@ -194,22 +196,18 @@ def _ocr_tesseract(raw: bytes, pages: list[int] | None, language: str, dpi: int)
 def _ocr_llamaparse(raw: bytes, pages: list[int] | None, tier: str) -> dict[int, str]:
     """OCR con LlamaParse: arma un PDF SOLO con las páginas pedidas (se paga por
     página), lo parsea y reasigna cada resultado a su índice original."""
-    from loaders import parse_with_llamaparse
+    from componentes.loaders import parse_with_llamaparse
+
+    from .e03_loader import pdf_pages_subset
 
     src = pymupdf.open(stream=raw, filetype="pdf")
     try:
-        targets = _target_pages(src, pages)
-        if not targets:
-            return {}
-        subset = pymupdf.open()
-        try:
-            for i in targets:
-                subset.insert_pdf(src, from_page=i, to_page=i)
-            subset_raw = subset.tobytes()
-        finally:
-            subset.close()
+        wanted = _target_pages(src, pages)
     finally:
         src.close()
+    subset_raw, targets = pdf_pages_subset(raw, wanted)
+    if not targets:
+        return {}
 
     docs = parse_with_llamaparse(subset_raw, "paginas_escaneadas.pdf", tier)
     return {orig: docs[j]["text"] for j, orig in enumerate(targets) if j < len(docs)}

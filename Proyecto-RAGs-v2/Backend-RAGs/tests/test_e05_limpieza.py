@@ -1,9 +1,9 @@
 """
-Tests de pipeline/stages/d_boilerplate.py con casos de distintos rubros.
+Tests de pipeline/etapas/e05_limpieza.py con casos de distintos rubros.
 Ejecutar desde Backend-RAGs:  python -m pytest tests -q
 """
 
-from pipeline.stages.d_boilerplate import remove_boilerplate
+from pipeline.etapas.e05_limpieza import remove_boilerplate
 
 
 def _pages(n, body, header=None, footer=None):

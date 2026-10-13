@@ -8,9 +8,9 @@ import json
 
 import pytest
 
-from splitters import FRAMEWORKS, list_frameworks, list_splitters, split_text
-from splitters import langchain as lc_catalog
-from splitters import llamaindex as li_catalog
+from componentes.splitters import FRAMEWORKS, list_frameworks, list_splitters, split_text
+from componentes.splitters import langchain as lc_catalog
+from componentes.splitters import llamaindex as li_catalog
 
 TEXTO = (
     "La ingesta convierte PDFs en chunks. Primero se valida el texto nativo. "

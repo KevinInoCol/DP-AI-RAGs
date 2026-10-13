@@ -1,19 +1,35 @@
 """
-Pipeline de ingesta RAG · SINK Qdrant (escritura de la colección del tenant)
-Ruta: Backend-RAGs/pipeline/sink/qdrant.py
+Pipeline de ingesta RAG · 09 · INDEXADO en Qdrant (escritura de la colección del tenant)
+Ruta: Backend-RAGs/pipeline/etapas/e09_indexado.py
 
-Distinto del benchmark de vectorstores.py: aquí solo se CREA la colección, se
+Distinto del benchmark de componentes/vectorstores: aquí solo se CREA la colección, se
 hace upsert idempotente y se LEE la ruta de indexación que eligió Qdrant.
 
-La ruta la decide Qdrant por su `indexing_threshold` (default 20000): por debajo
-→ full scan (fuerza bruta); por encima → HNSW. Aquí solo la leemos y reportamos.
+La ruta NO la elige este código: la decide Qdrant solo, en segundo plano. Cuando un
+SEGMENTO de la colección acumula más vectores sin indexar que su `indexing_threshold`,
+el optimizador construye el índice HNSW de ese segmento; mientras tanto, ese
+segmento se recorre por fuerza bruta.
+
+Ojo con la unidad: el umbral está en KILOBYTES de vectores y es POR SEGMENTO, no un
+número de vectores de la colección. Qdrant cuenta 1 KB = un vector de 256
+dimensiones, así que un vector de 768 dims "pesa" 3 KB y uno de 1536, 6 KB.
+
+Por eso la ruta se LEE de lo que Qdrant reporta (`indexed_vectors_count`) en vez de
+deducirla del umbral:
+  brute_force · ningún vector en HNSW todavía
+  mixed       · algunos segmentos con HNSW y otros sin indexar
+  hnsw        · todos los vectores en HNSW
+Justo después de un upsert la indexación puede seguir en curso (`optimizing`).
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-DEFAULT_INDEXING_THRESHOLD = 20000  # default de Qdrant (por debajo = fuerza bruta)
+# Umbral por defecto en KB por segmento: el del config.yaml de Qdrant y el que
+# reporta el servidor del curso. Solo describe el diagrama: la ingesta lee el real.
+DEFAULT_INDEXING_THRESHOLD_KB = 10000
+KB_PER_256_DIMS = 1  # Qdrant: 1 KB = un vector de 256 dimensiones
 UPSERT_BATCH_SIZE = 256
 
 
@@ -56,7 +72,7 @@ def ensure_collection(client, name: str, dim: int) -> None:
 
 
 def upsert(client, name: str, payloads: list[dict[str, Any]], vectors) -> None:
-    """Upsert idempotente (IDs deterministas de f_metadata → mismo doc no duplica)."""
+    """Upsert idempotente (IDs deterministas de e07_metadata → mismo doc no duplica)."""
     from qdrant_client import models as qm
 
     points = [
@@ -67,20 +83,63 @@ def upsert(client, name: str, payloads: list[dict[str, Any]], vectors) -> None:
         client.upsert(collection_name=name, points=points[s : s + UPSERT_BATCH_SIZE], wait=True)
 
 
-def index_route(client, name: str) -> tuple[str, int, int]:
-    """Lee de Qdrant cuántos vectores hay y el umbral, y deduce la ruta activa.
-    Si la colección no existe todavía (p.ej. ningún doc produjo chunks), reporta
-    fuerza bruta con 0 vectores en vez de fallar."""
+def vectors_per_threshold(threshold_kb: int, dim: int) -> int:
+    """Cuántos vectores de `dim` dimensiones caben en `threshold_kb` (por segmento)."""
+    return int(threshold_kb * 256 / dim) if dim else 0
+
+
+def index_route(client, name: str) -> dict[str, Any]:
+    """Ruta de indexación REAL de la colección, según lo que reporta Qdrant.
+
+    Devuelve {index_route, num_vectors, indexed_vectors, segments, optimizing,
+    indexing_threshold (KB por segmento), vectors_threshold (≈ vectores por segmento
+    para pasar a HNSW con la dimensión de la colección)}. Si la colección no existe
+    todavía (ningún doc produjo chunks), reporta fuerza bruta con 0 vectores.
+    """
     if not client.collection_exists(name):
-        return "brute_force", 0, DEFAULT_INDEXING_THRESHOLD
+        return {"index_route": "brute_force", "num_vectors": 0, "indexed_vectors": 0,
+                "segments": 0, "optimizing": False,
+                "indexing_threshold": DEFAULT_INDEXING_THRESHOLD_KB, "vectors_threshold": 0}
     info = client.get_collection(name)
     count = int(getattr(info, "points_count", 0) or 0)
-    threshold = DEFAULT_INDEXING_THRESHOLD
+    indexed = int(getattr(info, "indexed_vectors_count", 0) or 0)
+    threshold = DEFAULT_INDEXING_THRESHOLD_KB
     try:
         t = info.config.optimizer_config.indexing_threshold
         if t:
             threshold = int(t)
     except Exception:  # noqa: BLE001
         pass
-    route = "hnsw" if count >= threshold else "brute_force"
-    return route, count, threshold
+
+    if indexed == 0:
+        route = "brute_force"
+    elif indexed >= count:
+        route = "hnsw"
+    else:
+        route = "mixed"
+    status = str(getattr(info, "status", "") or "").lower()
+    return {
+        "index_route": route,
+        "num_vectors": count,
+        "indexed_vectors": min(indexed, count),
+        "segments": int(getattr(info, "segments_count", 0) or 0),
+        # yellow = el optimizador sigue trabajando (p. ej. construyendo HNSW)
+        "optimizing": "yellow" in status,
+        "indexing_threshold": threshold,
+        "vectors_threshold": vectors_per_threshold(threshold, collection_dim(client, name) or 0),
+    }
+
+
+def check_dimension(client, name: str, dimension: int, model: str) -> None:
+    """Falla si la colección ya existe con OTRA dimensión: sus vectores serían de otro
+    modelo y la colección quedaría inconsultable. Se llama ANTES de gastar en OCR y
+    embeddings."""
+    if not client.collection_exists(name):
+        return
+    existing = collection_dim(client, name)
+    if existing is not None and existing != dimension:
+        raise RuntimeError(
+            f"La colección '{name}' ya existe con vectores de {existing} dims, "
+            f"pero {model} produce {dimension}. Indexa con el "
+            f"mismo modelo con que se creó la colección, o bórrala para re-indexar."
+        )

@@ -63,12 +63,12 @@ def _get_code_parser(language: str):
 def _get_embed_model():
     """Modelo de embeddings para los splitters SEMÁNTICOS.
 
-    Reutiliza la resolución del catálogo de indexación (embeddings.py): usa Google
+    Reutiliza la resolución del catálogo de embeddings (componentes/embeddings): usa Google
     o OpenAI según qué API key haya en el entorno, con el MISMO modelo y dimensión
     que la etapa de indexación. Si no hay ninguna clave, lanza RuntimeError con el
     mensaje accionable que arma `resolve_embedder`.
     """
-    from embeddings import llama_embed_model
+    from componentes.embeddings import llama_embed_model
 
     return llama_embed_model()
 

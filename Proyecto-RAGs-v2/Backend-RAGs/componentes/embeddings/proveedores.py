@@ -1,9 +1,13 @@
 """
-Etapa de INDEXACIÓN del pipeline RAG: chunks -> vectores -> índice consultable.
+Proveedores de EMBEDDINGS: texto -> vectores, con Google u OpenAI vía LlamaIndex.
 
-Este módulo cubre tres cosas:
+Lo usan el banco de pruebas (pestaña Embeddings, splitters semánticos, benchmark de
+vector stores) y la ingesta (pipeline/etapas/e08_embeddings.py).
 
-  1. Un CATÁLOGO de modelos de embedding (igual que loaders.py / splitters.py),
+Este módulo cubre dos cosas (el índice en memoria del banco está en
+indice_memoria.py):
+
+  1. Un CATÁLOGO de modelos de embedding (igual que componentes/loaders y componentes/splitters),
      para poder comparar opciones desde la UI. Hoy hay DOS proveedores:
        - gemini-embedding-2        (Google · GOOGLE_API_KEY)
        - text-embedding-3-small    (OpenAI · OPENAI_API_KEY)
@@ -13,10 +17,6 @@ Este módulo cubre tres cosas:
      elige el proveedor mirando qué claves hay en el entorno, siguiendo el orden de
      PROVIDER_PRIORITY. Así el testbed y el pipeline de ingesta funcionan con
      cualquiera de las dos claves, sin tocar código.
-
-  3. Un ÍNDICE VECTORIAL en memoria (cosine) para probar la etapa completa:
-     se indexan los chunks (task_type de documento) y luego se consulta con una
-     pregunta (task_type de query). Así el testbed demuestra retrieval real.
 
 Notas de diseño
 ---------------
@@ -41,11 +41,12 @@ modelo en silencio cuando se le pide uno explícito: falla con un error claro.
 
 from __future__ import annotations
 
-import os
 import time
 from typing import Any
 
 import numpy as np
+
+import config
 
 # --------------------------------------------------------------------------- #
 # Modelos por proveedor · FUENTE DE VERDAD (cambiarlos aquí = una línea)
@@ -87,7 +88,7 @@ def _require_key(key: str) -> str:
     """Devuelve la API key del proveedor o falla con un mensaje accionable."""
     cfg = EMBEDDERS[key]
     env = cfg["requires_env"]
-    api_key = os.getenv(env)
+    api_key = config.variable(env)
     if not api_key:
         raise RuntimeError(
             f"Falta {env}. Consíguela en {cfg['api_key_url']} y colócala en el "
@@ -229,7 +230,7 @@ def has_api_key(key: str) -> bool:
     """True si la API key del proveedor está definida en el entorno."""
     if key not in EMBEDDERS:
         return False
-    return bool(os.getenv(EMBEDDERS[key]["requires_env"]))
+    return bool(config.variable(EMBEDDERS[key]["requires_env"]))
 
 
 def available_embedders() -> list[str]:
@@ -330,7 +331,7 @@ def list_embedders() -> list[dict[str, Any]]:
 # --------------------------------------------------------------------------- #
 # API de embedding
 # --------------------------------------------------------------------------- #
-def _embed(key: str | None, texts: list[str], params: dict[str, Any], is_query: bool) -> np.ndarray:
+def embed_vectors(key: str | None, texts: list[str], params: dict[str, Any], is_query: bool) -> np.ndarray:
     resolved = resolve_embedder(key)
     if not texts:
         return np.zeros((0, 0), dtype=np.float32)
@@ -341,12 +342,12 @@ def _embed(key: str | None, texts: list[str], params: dict[str, Any], is_query: 
 def embed_documents(key: str | None, texts: list[str], params: dict[str, Any] | None = None) -> np.ndarray:
     """Embebe textos como DOCUMENTOS (para indexar). Devuelve una matriz (N, dim).
     `key=None` -> resuelve el proveedor por API key disponible."""
-    return _embed(key, texts, params or {}, is_query=False)
+    return embed_vectors(key, texts, params or {}, is_query=False)
 
 
 def embed_query(key: str | None, text: str, params: dict[str, Any] | None = None) -> np.ndarray:
     """Embebe una query. Devuelve un vector (dim,)."""
-    return _embed(key, [text], params or {}, is_query=True)[0]
+    return embed_vectors(key, [text], params or {}, is_query=True)[0]
 
 
 # --------------------------------------------------------------------------- #
@@ -360,7 +361,7 @@ def embed_texts(key: str | None, texts: list[str], params: dict[str, Any] | None
     """
     resolved = resolve_embedder(key)
     t0 = time.perf_counter()
-    vectors = _embed(resolved, texts, params or {}, is_query=False)
+    vectors = embed_vectors(resolved, texts, params or {}, is_query=False)
     elapsed_ms = round((time.perf_counter() - t0) * 1000, 1)
 
     dim = int(vectors.shape[1]) if vectors.size else 0
@@ -381,56 +382,3 @@ def embed_texts(key: str | None, texts: list[str], params: dict[str, Any] | None
         "elapsed_ms": elapsed_ms,
         "vectors": items,
     }
-
-
-# --------------------------------------------------------------------------- #
-# Índice vectorial en memoria (indexar + consultar)
-# --------------------------------------------------------------------------- #
-class VectorIndex:
-    """Índice coseno en memoria. Suficiente para el testbed; en producción esto
-    sería Qdrant / pgvector, pero la interfaz (build/search) es la misma.
-
-    El embedder se RESUELVE al construir y se guarda: así la query se embebe con
-    el MISMO modelo y dimensión que los documentos (si no, el coseno no significa
-    nada)."""
-
-    def __init__(self, key: str | None, params: dict[str, Any]):
-        self.key = resolve_embedder(key)
-        self.params = params or {}
-        self.vectors: np.ndarray = np.zeros((0, 0), dtype=np.float32)
-        self.chunks: list[dict[str, Any]] = []
-
-    def build(self, chunks: list[dict[str, Any]]) -> None:
-        """chunks: [{text, metadata?}]. Los embebe como DOCUMENTOS y los guarda."""
-        texts = [c["text"] for c in chunks]
-        self.vectors = _embed(self.key, texts, self.params, is_query=False)
-        self.chunks = chunks
-
-    def search(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
-        """Embebe la query (task_type de QUERY) y devuelve los top_k por coseno.
-
-        Como todos los vectores están L2-normalizados, el coseno es el producto
-        punto: una sola multiplicación matricial.
-        """
-        if not self.chunks:
-            return []
-        q = _embed(self.key, [query], self.params, is_query=True)[0]
-        scores = self.vectors @ q  # (N,) — coseno porque están normalizados
-        top = np.argsort(-scores)[: max(1, top_k)]
-        return [
-            {
-                "rank": rank + 1,
-                "score": round(float(scores[i]), 4),
-                "index": int(i),
-                "text": self.chunks[int(i)]["text"],
-                "metadata": self.chunks[int(i)].get("metadata", {}),
-            }
-            for rank, i in enumerate(top)
-        ]
-
-
-def build_index(key: str | None, chunks: list[dict[str, Any]], params: dict[str, Any] | None = None) -> VectorIndex:
-    """Atajo: crea un VectorIndex y lo llena con los chunks dados."""
-    index = VectorIndex(key, params or {})
-    index.build(chunks)
-    return index

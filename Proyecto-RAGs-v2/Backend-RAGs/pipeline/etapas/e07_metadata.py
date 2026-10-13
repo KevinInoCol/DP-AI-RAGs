@@ -1,6 +1,6 @@
 """
-Pipeline de ingesta RAG · F · METADATA + IDEMPOTENCIA
-Ruta: Backend-RAGs/pipeline/stages/f_metadata.py
+Pipeline de ingesta RAG · 07 · METADATA + IDEMPOTENCIA
+Ruta: Backend-RAGs/pipeline/etapas/e07_metadata.py
 
 Paso 5 (ultimo antes de embeddings/Qdrant): a cada chunk le pega la metadata que
 viajara al payload de Qdrant y le asigna un ID DETERMINISTA para que reprocesar el

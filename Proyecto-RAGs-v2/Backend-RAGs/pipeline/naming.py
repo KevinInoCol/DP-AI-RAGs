@@ -1,6 +1,6 @@
 """
 Pipeline de ingesta RAG · NAMING de colecciones Qdrant por tenant
-Ruta: Backend-RAGs/pipeline/sink/naming.py
+Ruta: Backend-RAGs/pipeline/naming.py
 
 Convención (fuente de verdad · server-side):
 

@@ -60,7 +60,7 @@ _YES_NO = ["sí", "no"]
 # Utilidades
 # --------------------------------------------------------------------------- #
 class _EmbeddingsAdapter(Embeddings):
-    """Expone el embedder de LlamaIndex (embeddings.py) con la interfaz de LangChain.
+    """Expone el embedder de LlamaIndex (componentes/embeddings) con la interfaz de LangChain.
 
     Así el SemanticChunker usa el MISMO modelo y dimensión que la indexación
     (Google u OpenAI según la API key) sin sumar `langchain-google-genai` ni
@@ -80,7 +80,7 @@ class _EmbeddingsAdapter(Embeddings):
 def _get_embeddings() -> Embeddings:
     """Embeddings para el SemanticChunker. Si no hay ninguna API key, lanza
     RuntimeError con el mensaje accionable de `resolve_embedder`."""
-    from embeddings import llama_embed_model
+    from componentes.embeddings import llama_embed_model
 
     return _EmbeddingsAdapter(llama_embed_model())
 
